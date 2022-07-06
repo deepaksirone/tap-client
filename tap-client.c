@@ -76,14 +76,14 @@ int verify_attested_tls(int preverify, WOLFSSL_X509_STORE_CTX* store_ctx) {
     wc_InitDecodedCert(decodedCert, derBuffer[0], derSz, 0);
     
 
-    int ret = wc_SetUnknownExtCallback(&decodedCert, myCustomExtCallback);
+    int ret = wc_SetUnknownExtCallback(decodedCert, myCustomExtCallback);
 
     ret = ParseCert(decodedCert, CERT_TYPE, NO_VERIFY, NULL);
     if (ret == 0) {
         printf("[verify_attested_tls] Cert issuer: %s\n", decodedCert->issuer);
     }
-    
-    return (ret == ASN_CRIT_EXT_E) ? 0 : 1;
+
+    return 1;
 }
 
 WOLFSSL* Client(WOLFSSL_CTX* ctx, char* suite, int setSuite)
@@ -168,11 +168,11 @@ int main(int argc, char **argv)
 
     wolfSSL_Init();
 
-    char *hostname = "google.com";
+    char *hostname = "localhost";
     int host_len = strlen(hostname);
 
     sslCli = Client(ctxCli, "let-wolfssl-decide", 0);
-    sockfd = initiate_connection(hostname, 443);
+    sockfd = initiate_connection(hostname, 34563);
 
     /* Attach wolfSSL to the socket */
     if ((ret = wolfSSL_set_fd(sslCli, sockfd)) != WOLFSSL_SUCCESS) {
@@ -192,7 +192,7 @@ int main(int argc, char **argv)
         if (ret != SSL_SUCCESS) {
             if (error != SSL_ERROR_WANT_READ &&
                 error != SSL_ERROR_WANT_WRITE) {
-                printf("client ssl connect failed\n");
+                printf("client ssl connect failed, error: %d\n", error);
                 goto cleanup;
             }
         }
