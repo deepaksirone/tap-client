@@ -18,6 +18,8 @@
 #include <wolfssl/wolfcrypt/aes.h>
 #include <wolfssl/wolfcrypt/asn.h>
 
+#include "keystore_request.h"
+
 void usage() {
 	printf("./tap_client <request> <request_params>");
 }
@@ -154,6 +156,54 @@ int32_t initiate_connection(char *hostname, int32_t port) {
 	return fd_sock;
 }
 
+int64_t write_buffer(WOLFSSL *sslserv, void *buffer, size_t sz)
+{
+    int64_t pos = 0;
+    int64_t ret = wolfSSL_write(sslserv, buffer, sz);
+    int error;
+
+    while (ret > 0) {
+        pos += ret;
+        ret = wolfSSL_write(sslserv, (void *) (buffer + pos), sz - pos);
+    }
+
+    error = wolfSSL_get_error(sslserv, 0);
+    if (ret < 0) {
+        if (error != SSL_ERROR_WANT_READ &&
+                error != SSL_ERROR_WANT_WRITE) {
+                printf("server write failed\n");
+        }
+    }
+
+    return pos;
+}
+
+// Reads till a null byte is encountered
+int64_t read_buffer(WOLFSSL *sslcli, void *buffer, size_t sz)
+{
+	int64_t pos = 0;
+	int64_t ret = wolfSSL_read(sslcli, buffer, sz);
+    int error;
+
+	while (ret > 0) {
+		pos += ret;
+        if (*(char *)(buffer + pos) == 0) {
+            return pos;
+        }
+		ret = wolfSSL_read(sslcli, (void *) (buffer + pos), sz - pos);
+	}
+
+    error = wolfSSL_get_error(sslcli, 0);
+    if (ret < 0) {
+        if (error != SSL_ERROR_WANT_READ &&
+                error != SSL_ERROR_WANT_WRITE) {
+                printf("server read failed\n");
+        }
+    }
+
+	return pos;
+}
+
 int main(int argc, char **argv)
 {
 	char msg[] = "GET / HTTP/1.1\r\nConnection: close\r\n\r\n";
@@ -198,6 +248,34 @@ int main(int argc, char **argv)
         }
         printf("Client connected successfully...\n");
     }
+
+    printf("Sending User registration request\n");
+    fflush(stdout);
+    reguser_request_t reg;
+    memset(&reg, 0, sizeof(reg));
+
+    strncpy(reg.username, "bug", 3);
+    strncpy(reg.username, "bug", 3);
+
+    reg.password_len = 3;
+    reg.user_len = 3;
+
+    request_t request;
+    request.type = REGUSER_REQUEST;
+    request.data.reguser_req = reg;
+
+    uint64_t request_sz = sizeof(request);
+    write_buffer(sslCli, &request_sz, sizeof(uint64_t));
+
+    write_buffer(sslCli, &request, sizeof(request));
+
+    printf("Finished writing request\n");
+    fflush(stdout);
+
+    read_buffer(sslCli, reply, 1000);
+
+    printf("Reply: %s\n", reply);
+
 
 
 
