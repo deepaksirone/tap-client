@@ -131,7 +131,7 @@ macro(add_eyrie_runtime target_name tag plugins) # the files are passed via ${AR
 
   ExternalProject_Add(eyrie-${target_name}
     PREFIX ${runtime_prefix}
-    GIT_REPOSITORY git@github.com:deepaksirone/keystone-runtime.git
+    GIT_REPOSITORY https://github.com/deepaksirone/keystone-runtime.git
     GIT_TAG ${tag}
     CONFIGURE_COMMAND ""
     UPDATE_COMMAND git pull origin tap
@@ -156,7 +156,7 @@ macro(add_wolfssl target_name tag libc plugins)
   ExternalProject_Add(wolfssl-${target_name}
     PREFIX ${tls_prefix}
     INSTALL_DIR ${tls_prefix}/install
-    GIT_REPOSITORY git@github.com:deepaksirone/wolfssl.git
+    GIT_REPOSITORY https://github.com/deepaksirone/wolfssl.git
     GIT_TAG ${tag}
     CONFIGURE_COMMAND ./autogen.sh && ./configure --prefix=${wolfssl_install} --exec-prefix=${wolfssl_install} --enable-filesystem=no --enable-certgen --enable-certreq --enable-keygen --enable-sessioncerts --enable-certext --enable-asn=template --enable-static --disable-shared --enable-harden --enable-singlethreaded
     UPDATE_COMMAND git checkout ${tag}
