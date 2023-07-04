@@ -28,7 +28,7 @@ macro(use_riscv_toolchain bits)
   set(AR              ${CROSSCOMPILE}ar)
   set(OBJCOPY         ${CROSSCOMPILE}objcopy)
   set(OBJDUMP         ${CROSSCOMPILE}objdump)
-  set(CFLAGS          "-Wall -Werror")
+  set(CFLAGS          "-Wall")
 
   global_set(CMAKE_C_COMPILER        ${CC}${EXT})
   global_set(CMAKE_ASM_COMPILER        ${CC}${EXT})
@@ -71,7 +71,7 @@ macro(use_riscv_musl_toolchain bits)
   set(AR              ${CROSSCOMPILE}ar)
   set(OBJCOPY         ${CROSSCOMPILE}objcopy)
   set(OBJDUMP         ${CROSSCOMPILE}objdump)
-  set(CFLAGS          "-Wall -Werror")
+  set(CFLAGS          "-Wall")
 
   global_set(CMAKE_C_COMPILER        ${CC}${EXT})
   global_set(CMAKE_ASM_COMPILER        ${CC}${EXT})
@@ -158,7 +158,7 @@ macro(add_wolfssl target_name tag libc plugins)
     INSTALL_DIR ${tls_prefix}/install
     GIT_REPOSITORY https://github.com/deepaksirone/wolfssl.git
     GIT_TAG ${tag}
-    CONFIGURE_COMMAND ./autogen.sh && ./configure --prefix=${wolfssl_install} --exec-prefix=${wolfssl_install} --enable-filesystem=no --enable-certgen --enable-certreq --enable-keygen --enable-sessioncerts --enable-certext --enable-asn=template --enable-static --disable-shared --enable-harden --enable-singlethreaded
+    CONFIGURE_COMMAND ./autogen.sh && ./configure --prefix=${wolfssl_install} --exec-prefix=${wolfssl_install} --enable-filesystem=no --enable-certgen --enable-certreq --enable-keygen --enable-sessioncerts --enable-certext --enable-asn=template --enable-static --disable-shared --enable-harden --enable-singlethreaded --disable-werror --host=riscv64-unknown-linux-${libc} CC=riscv64-unknown-linux-${libc}-gcc AR=riscv64-unknown-linux-${libc}-ar RANLIB=riscv64-unknown-linux-${libc}-ranlib 
     UPDATE_COMMAND git checkout ${tag}
     BUILD_COMMAND make EXTRA_CFLAGS=${plugins}
     BUILD_IN_SOURCE TRUE

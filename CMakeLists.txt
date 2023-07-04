@@ -5,7 +5,7 @@ include(macros.cmake)
 cmake_minimum_required(VERSION 3.10)
 enable_language(C CXX ASM)
 
-#use_riscv_musl_toolchain(64)
+use_riscv_musl_toolchain(64)
 
 set(bin_name tap_client)
 set(bin_src tap-client.c ed25519/fe.c ed25519/ge.c ed25519/sc.c ed25519/sha512.c ed25519/verify.c)
