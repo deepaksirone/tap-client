@@ -4,6 +4,7 @@
 #include <signal.h>
 #include <fcntl.h>
 #include <unistd.h>
+#include <time.h>
 
 #include <sys/socket.h>
 #include <arpa/inet.h>
@@ -20,6 +21,7 @@
 
 #include "keystore_request.h"
 #include "command_line.h"
+#include "./ed25519/ed25519.h"
 
 #if defined(DEBUG_TAP)
 #define DEBUG_PRINT(fmt, args...)    fprintf(stderr, fmt, ## args)
@@ -29,41 +31,36 @@
 
 
 void usage() {
-	printf("./tap_client <request> <request_file>\n request = {reg_user, reg_rule, update_rule}\n");
+	printf("./tap_client <request> <request_file> <hostname> <port>\n request = {reg_user, reg_rule, update_rule}\n");
 }
 
 #define derBufSz 8000
 #define MAX_FILE_SIZE 65535
 
 char filebuffer[MAX_FILE_SIZE];
+static char pub_key[2048];
 
 int myCustomExtCallback(const word16* oid, word32 oidSz, int crit,
                                const unsigned char* der, word32 derSz) {
     word32 i;
 
     printf("Custom Extension found!\n");
-    printf("(");
-    for (i = 0; i < oidSz; i++) {
-        printf("%d", oid[i]);
-        if (i < oidSz - 1) {
-            printf(".");
-        }
-    }
-    printf(") : ");
+    
+    report_t report;
+    memcpy((void *)&report, der, sizeof(report_t));
 
-    if (crit) {
-        printf("CRITICAL");
+
+    // Verify the signature here and later check if the public key matches that in the certificate
+    if (ed25519_verify((unsigned char *)&report.enclave.signature, (unsigned char *)&report.enclave, 
+        sizeof(struct enclave_report_t) - ATTEST_DATA_MAXLEN - SIGNATURE_SIZE + report.enclave.data_len, (unsigned char *)&report.sm.public_key)) {
+        printf("[Custom Extension] Successfully verified signature!\n");
     } else {
-        printf("NOT CRITICAL");
+        printf("[Custom Extension] Successfully verified signature!\n");
     }
-    printf(" : ");
 
-    for (i = 0; i < derSz; i ++) {
-        printf("%x ", der[i]);
-    }
-    printf("\n");
-    fflush(stdout);
-
+    // Store the DER public key for later verification
+    printf("[Custom Extension] report.enclave.data_len: %lu\n", report.enclave.data_len);
+    memcpy((void *)&pub_key, (void *)&report.enclave.data, report.enclave.data_len);
     /* NOTE: by returning zero, we are accepting this extension and informing
      *       wolfSSL that it is acceptable. If you find an extension that you
      *       do not find acceptable, you should return an error. The standard 
@@ -94,6 +91,13 @@ int verify_attested_tls(int preverify, WOLFSSL_X509_STORE_CTX* store_ctx) {
     ret = ParseCert(decodedCert, CERT_TYPE, NO_VERIFY, NULL);
     if (ret == 0) {
         printf("[verify_attested_tls] Cert issuer: %s\n", decodedCert->issuer);
+    }
+
+
+    if (memcmp(decodedCert->publicKey, pub_key, decodedCert->pubKeySize) == 0) {
+        printf("[verify_attested_tls] Public Keys Match!\n");
+    } else {
+        printf("[verify_attested_tls] Public Keys Do Not Match!\n");
     }
 
     return 1;
@@ -275,7 +279,7 @@ struct option parse_command_line(int argc, char **argv) {
     struct option opt;
     opt.invalid = 0;
 
-    if (argc != 3) {
+    if (argc != 5) {
         opt.invalid = 1;
         return opt;
     }
@@ -340,11 +344,12 @@ struct option parse_command_line(int argc, char **argv) {
         char *rule_bin_hash = hex_to_bytes(rule_bin_hash_hex, EAPP_BIN_HASH_SIZE);
         memcpy(regrule_req.rule_bin_hash, rule_bin_hash, EAPP_BIN_HASH_SIZE);
 
-        char *runtime_bin_hash_hex = parse_file(filebuffer, "runtime_bin_hash:");
-        char *runtime_bin_hash = hex_to_bytes(runtime_bin_hash_hex, RUNTIME_BIN_HASH_SIZE);
-        memcpy(regrule_req.runtime_bin_hash, runtime_bin_hash, RUNTIME_BIN_HASH_SIZE);
+        char *sm_bin_hash_hex = parse_file(filebuffer, "sm_bin_hash:");
+        char *sm_bin_hash = hex_to_bytes(sm_bin_hash_hex, SM_BIN_HASH_SIZE);
+        memcpy(regrule_req.sm_bin_hash, sm_bin_hash, SM_BIN_HASH_SIZE);
 
-        opt.req_type = REGRULE_REQUEST;
+        //opt.req_type = REGRULE_REQUEST;
+        opt.request.type = REGRULE_REQUEST;
         opt.request.data.regrule_req = regrule_req;
 
     } else if (strcmp(argv[1], "reg_user") == 0) {
@@ -371,11 +376,18 @@ struct option parse_command_line(int argc, char **argv) {
 
     }
 
+    opt.hostname = strdup(argv[3]);
+    opt.port = atoi(argv[4]);
+
     return opt;
 }
 
 int main(int argc, char **argv)
 {
+    clock_t start, end;
+    double cpu_time_used;
+    start = clock();
+
     char reply[65535];
     int ret, msgSz, sockfd;
     struct sockaddr_in servAddr;
@@ -392,11 +404,12 @@ int main(int argc, char **argv)
     wolfSSL_Init();
 
     //TODO: Fix test here!
-    char *hostname = "localhost";
+    char *hostname = opt.hostname;
+    int port = opt.port;
     //int host_len = strlen(hostname);
 
     sslCli = Client(ctxCli, "let-wolfssl-decide", 0);
-    sockfd = initiate_connection(hostname, 34563);
+    sockfd = initiate_connection(hostname, port);
 
     /* Attach wolfSSL to the socket */
     if ((ret = wolfSSL_set_fd(sslCli, sockfd)) != WOLFSSL_SUCCESS) {
@@ -424,7 +437,31 @@ int main(int argc, char **argv)
         printf("Client connected successfully...\n");
     }
 
-    printf("Sending User registration request\n");
+    send_message(sslCli, &opt.request, sizeof(opt.request));
+    int sz = recv_message(sslCli, reply, sizeof(reply));
+    end = clock();
+    cpu_time_used = ((double) (end - start)) / CLOCKS_PER_SEC;
+    printf("Reply: %s, Reply size: %d\n", reply, sz);
+    printf("CPU Time Used: %lf\n", cpu_time_used);
+    
+/*
+    switch (opt.req_type) {
+        case REQ_REGUSER:
+                send_message(sslCli, &opt.request, sizeof(opt.request));
+                sz = recv_message(sslCli, reply, sizeof(reply));
+                printf("Reply: %s, Reply size: %d\n", reply, sz);
+                break;
+        case REQ_REGRULE:
+                send_message(sslCli, &opt.request.data.regrule_req, sizeof(opt.request.data.regrule_req));
+                sz = recv_message(sslCli, reply, sizeof(reply));
+                printf("Reply: %s, Reply size: %d\n", reply, sz);
+                break;
+        default:
+                printf("unsupported rule type\n");
+                return -1;
+    }*/
+
+    /*printf("Sending User registration request\n");
     fflush(stdout);
 
     reguser_request_t reg;
@@ -443,15 +480,25 @@ int main(int argc, char **argv)
     send_message(sslCli, &request, sizeof(request));
     int sz = recv_message(sslCli, reply, sizeof(reply));
 
-    printf("Reply: %s, Reply size: %d\n", reply, sz);
+    printf("Reply: %s, Reply size: %d\n", reply, sz);*/
+
+    /*request_t request_2;
+    request_2.type = RUNTIME_REQUEST;
+    runtime_request_t runtime_req;
+    request_2.data.runtime_req = runtime_req;
+
+    send_message(sslCli, &request_2, sizeof(request_2));
+    sz = recv_message(sslCli, reply, sizeof(reply));
+
+    printf("Reply2: %s, Reply size: %d\n", reply, sz);*/
 
 
-    regrule_request_t regrule;
+    /*(regrule_request_t regrule;
     memset(&regrule, 0, sizeof(regrule_request_t));
     regrule.rid = 1;
     regrule.num_triggers = regrule.num_actions = 1;
-    strncpy(regrule.username, "bug", 4);
-    strncpy(regrule.username, "bug", 4);
+    strncpy_s(regrule.username, "bug", 4);
+    strncpy(regrule.username, "bug", 4);*/
 
 
 

@@ -23,10 +23,10 @@ struct sm_report_t {
   byte signature[SIGNATURE_SIZE];
 };
 
-struct report_t {
+typedef struct report_t {
   struct enclave_report_t enclave;
   struct sm_report_t sm;
   byte dev_public_key[PUBLIC_KEY_SIZE];
-};
+} report_t;
 
 #endif

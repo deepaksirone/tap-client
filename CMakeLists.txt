@@ -5,8 +5,10 @@ include(macros.cmake)
 cmake_minimum_required(VERSION 3.10)
 enable_language(C CXX ASM)
 
+#use_riscv_musl_toolchain(64)
+
 set(bin_name tap_client)
-set(bin_src tap-client.c)
+set(bin_src tap-client.c ed25519/fe.c ed25519/ge.c ed25519/sc.c ed25519/sha512.c ed25519/verify.c)
 
 add_definitions(-DHAVE_THREAD_LS -DNDEBUG -DNO_DO178 -DSINGLE_THREADED -DTFM_TIMING_RESISTANT -DECC_TIMING_RESISTANT -DWC_RSA_BLINDING 
 -DWOLFSSL_USE_ALIGN -DWOLFSSL_SHA224 -DWOLFSSL_SHA512 -DWOLFSSL_SHA384 -DSESSION_CERTS -DHAVE_HKDF -DNO_DSA -DHAVE_ECC -DTFM_ECC256 

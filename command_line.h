@@ -14,5 +14,7 @@ struct option {
     request_type_t req_type;
     int invalid;
     request_t request;
+    char *hostname;
+    int port;
 };
 #endif
